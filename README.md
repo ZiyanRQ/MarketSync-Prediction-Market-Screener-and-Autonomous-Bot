@@ -4,8 +4,9 @@ A prediction-market arbitrage analysis platform for betting exchanges. MarketSyn
 authenticates to exchange APIs, pulls live back/lay prices, and scans markets for
 pricing inefficiencies — mispricings where the odds imply a guaranteed profit.
 
-Built from scratch while learning Python, software engineering, and quantitative
-finance. Every line is code I can explain.
+Built while learning Python, software engineering, and quantitative finance,
+using AI as a pair-programmer and tutor. The reasoning and design trade-offs
+behind each step are documented in the dev-log.
 
 ## What it does today
 
