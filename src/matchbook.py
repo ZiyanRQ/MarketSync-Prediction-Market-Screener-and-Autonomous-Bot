@@ -7,6 +7,8 @@ under 100% — a theoretical "back every runner and profit whoever wins" arb.
 
 import os
 import sys
+import time
+from datetime import datetime
 
 import requests
 from dotenv import load_dotenv
@@ -19,6 +21,8 @@ SPORTS_URL = "https://api.matchbook.com/edge/rest/lookups/sports"
 EVENTS_URL = "https://api.matchbook.com/edge/rest/events"
 USER_AGENT = "MarketSync/0.1"  # Matchbook rejects requests that send no User-Agent
 COMMISSION = 0.02              # ~2% commission on net market winnings
+WATCH_SPORT_IDS = [3, 1, 116]  # Baseball, American Football, Darts — sports to poll
+POLL_SECONDS = 30              # interval between scans (mind the API request cost)
 
 
 def login():
@@ -101,6 +105,30 @@ def book_percentage(market):
     return inv_sum, priced, len(runners)
 
 
+def find_opportunities(events):
+    """Return the under-round markets in a batch of events.
+
+    Each item is a dict: {event, market, book_pct, margin, beats_commission,
+    runners}. Only complete books under 100% qualify — the guaranteed
+    back-every-runner case. This is the detection core the loop polls with.
+    """
+    opportunities = []
+    for event in events:
+        for market in event.get("markets", []):
+            inv_sum, priced, total = book_percentage(market)
+            if priced > 0 and priced == total and inv_sum < 1.0:
+                margin = (1 - inv_sum) * 100
+                opportunities.append({
+                    "event": event.get("name"),
+                    "market": market.get("name"),
+                    "book_pct": inv_sum * 100,
+                    "margin": margin,
+                    "beats_commission": margin > COMMISSION * 100,
+                    "runners": [(r.get("name"), best_back(r)) for r in market.get("runners", [])],
+                })
+    return opportunities
+
+
 # --- Presentation ----------------------------------------------------------
 def scan_events(events):
     """Print each market's book percentage, flagging under-round markets."""
@@ -128,22 +156,50 @@ def scan_events(events):
                 print(f"  {name}: book {inv_sum * 100:.1f}% (over-round, normal)")
 
 
+def scan_loop(session, sport_ids=WATCH_SPORT_IDS, interval=POLL_SECONDS, per_page=20):
+    """Poll the watched sports on a fixed interval, reporting under-round markets.
+
+    Prints a one-line heartbeat each cycle and full detail for any opportunity.
+    Re-authenticates automatically if the ~6h session token expires. Ctrl+C stops.
+    """
+    ids = ",".join(str(s) for s in sport_ids)
+    print(f"Polling sports {ids} every {interval}s — Ctrl+C to stop.\n")
+    while True:
+        try:
+            events = get_events(session, ids, per_page=per_page)
+        except requests.HTTPError as error:
+            if error.response is not None and error.response.status_code == 401:
+                print("Session expired — re-authenticating.")
+                session = login()
+                continue
+            raise
+
+        stamp = datetime.now().strftime("%H:%M:%S")
+        markets = sum(len(event.get("markets", [])) for event in events)
+        opportunities = find_opportunities(events)
+
+        if not opportunities:
+            print(f"[{stamp}] {len(events)} events / {markets} markets — no under-round")
+        else:
+            print(f"[{stamp}] {len(opportunities)} UNDER-ROUND "
+                  f"({len(events)} events / {markets} markets):")
+            for opp in opportunities:
+                flag = "" if opp["beats_commission"] else "  (below commission — likely not worth it)"
+                print(f"  {opp['event']} — {opp['market']}: "
+                      f"book {opp['book_pct']:.1f}%  margin {opp['margin']:.2f}%{flag}")
+                for name, back in opp["runners"]:
+                    print(f"      {(name or '?')[:18]:<18} back {back}")
+
+        time.sleep(interval)
+
+
 def main():
     session = login()
     print("Logged in.")
-
-    sports = get_sports(session)
-    print(f"\n{len(sports)} sports available. First few ids:")
-    for sport in sports[:5]:
-        print(f"  {sport['name']:<24} id={sport['id']}")
-
-    sport_id = 3  # Baseball — 2-outcome moneyline markets give complete books to scan
-    events = get_events(session, sport_id)
-    print(f"\nScanning sport-id {sport_id}: {len(events)} open events")
-    if not events:
-        print("No open events — try another id (1 = NFL, 116 = Darts, 8 = Golf).")
-        return
-    scan_events(events)
+    try:
+        scan_loop(session)
+    except KeyboardInterrupt:
+        print("\nStopped.")
 
 
 if __name__ == "__main__":
