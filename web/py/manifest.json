@@ -1,0 +1,26 @@
+{
+  "files": [
+    "app/__init__.py",
+    "app/models/__init__.py",
+    "app/models/enums.py",
+    "app/models/exchange_price.py",
+    "app/models/market.py",
+    "app/models/opportunity.py",
+    "app/models/risk_profile.py",
+    "app/models/trade.py",
+    "app/providers/__init__.py",
+    "app/providers/base_provider.py",
+    "app/providers/betfair_provider.py",
+    "app/providers/matchbook_provider.py",
+    "app/providers/mock_provider.py",
+    "app/utils/__init__.py",
+    "app/utils/calculations.py",
+    "app/utils/formatting.py",
+    "app/services/__init__.py",
+    "app/services/arbitrage_engine.py",
+    "app/services/simulation_engine.py",
+    "app/services/cache_service.py",
+    "app/services/api_usage_tracker.py",
+    "webapp.py"
+  ]
+}

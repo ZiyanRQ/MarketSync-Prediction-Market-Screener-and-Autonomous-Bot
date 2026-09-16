@@ -1,0 +1,64 @@
+name: Deploy web preview to GitHub Pages
+
+# GitHub Pages' "deploy from a branch" option only offers / or /docs, and this
+# site lives in /web - so it is published with an action instead. It also gives
+# the Qt-boundary test a chance to fail the deploy rather than shipping a broken
+# bundle: if a PySide6 import reaches a module the browser build copies, that
+# module cannot load under Pyodide.
+
+on:
+  push:
+    branches: [main]
+    paths: ["web/**", "app/**", "tests/**", ".github/workflows/pages.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Check the Qt boundary
+        run: python tests/test_no_qt_imports.py
+
+      - name: Rebuild web/py from app/
+        run: python web/build.py
+
+      - name: Fail if web/py is stale
+        # The committed copy should match app/. If it does not, someone edited
+        # app/ without re-running the build - surface that instead of silently
+        # deploying a rebuilt bundle that differs from the repo.
+        run: |
+          if [ -n "$(git status --porcelain web/py)" ]; then
+            echo "::error::web/py is out of date - run 'python web/build.py' and commit the result."
+            git --no-pager diff --stat web/py
+            exit 1
+          fi
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

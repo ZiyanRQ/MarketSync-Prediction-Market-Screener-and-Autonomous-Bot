@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MarketSync Terminal</title>
+<meta name="description" content="Browser preview of the MarketSync cross-exchange arbitrage terminal, running the project's real Python detection engine under Pyodide.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='13' font-size='13'>&#9878;</text></svg>">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- Boot overlay: Pyodide is ~7MB, so the wait is made legible rather than hidden -->
+<div id="boot">
+  <div class="boot-box">
+    <div class="boot-title">MARKETSYNC</div>
+    <div class="boot-sub">cross-exchange arbitrage terminal</div>
+    <div class="boot-bar"><div id="boot-fill"></div></div>
+    <pre id="boot-log"></pre>
+    <div class="boot-note">Loading CPython (WebAssembly) to run the project's
+      real detection engine in your browser. First load only &mdash; then cached.</div>
+  </div>
+</div>
+
+<header class="topbar">
+  <div class="brand">MARKETSYNC<span>TERMINAL</span></div>
+  <div class="status">
+    <span class="chip">BETFAIR: <b class="demo">DEMO</b></span>
+    <span class="chip">MATCHBOOK: <b class="demo">DEMO</b></span>
+    <span class="chip">DATA SOURCE: <b class="demo">SIMULATED</b></span>
+    <span class="chip engine" title="The detection engine is the project's actual Python, compiled to WebAssembly">
+      ENGINE: <b class="py">PYTHON / PYODIDE</b></span>
+  </div>
+</header>
+
+<nav class="toolbar">
+  <div class="group">
+    <label class="lbl">RISK</label>
+    <button class="preset" data-profile="SAFE">SAFE</button>
+    <button class="preset on" data-profile="MODERATE">MODERATE</button>
+    <button class="preset" data-profile="RISKY">RISKY</button>
+  </div>
+  <div class="group">
+    <label class="lbl">FILTER</label>
+    <input id="search" type="search" placeholder="event or selection&hellip;" autocomplete="off">
+  </div>
+  <div class="group">
+    <label class="lbl">SHOW</label>
+    <button id="toggle-all" class="preset">ALL MARKETS</button>
+  </div>
+  <div class="group right">
+    <button id="pause" class="preset">&#10073;&#10073; PAUSE</button>
+    <label class="lbl">SPEED</label>
+    <select id="speed">
+      <option value="3000">0.3x</option>
+      <option value="1500" selected>1x</option>
+      <option value="700">2x</option>
+    </select>
+  </div>
+</nav>
+
+<!-- Always visible, never dismissible: this page is a preview of the desktop
+     app running on simulated data, and should never be mistaken for the real
+     thing or for live market prices. -->
+<div class="disclaimer">
+  <b>PREVIEW</b>
+  <span>This is a browser preview of the <b>MarketSync desktop terminal</b> (PySide6).
+    It runs the project's real detection engine on <b>simulated data</b> &mdash; there is
+    no exchange connection, no live prices, and no real bets or money. Some panels
+    (auto-trader, analytics, alerts, persistence) are desktop-only.</span>
+  <a href="https://github.com/ZiyanRQ/MarketSync">source &#8599;</a>
+</div>
+
+<main>
+  <section class="panel screener">
+    <div class="panel-hd">
+      <span>SCREENER</span>
+      <span id="screener-count" class="muted"></span>
+    </div>
+    <div class="table-wrap">
+      <table id="grid">
+        <thead>
+          <tr>
+            <th data-sort="event">EVENT</th>
+            <th data-sort="selection">SELECTION</th>
+            <th data-sort="back_odds" class="num">BACK</th>
+            <th data-sort="lay_odds" class="num">LAY</th>
+            <th data-sort="net_edge" class="num sorted-desc">NET %</th>
+            <th data-sort="liquidity" class="num">LIQ</th>
+            <th data-sort="quality" class="num">QUAL</th>
+            <th data-sort="risk">RISK</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+      <div id="empty" class="empty" hidden>
+        No opportunity clears the enabled risk profile.<br>
+        <span class="muted">Enable RISKY, or switch to ALL MARKETS to see every priced selection.</span>
+      </div>
+    </div>
+  </section>
+
+  <aside class="panel inspector">
+    <div class="panel-hd"><span>INSPECTOR</span></div>
+    <div id="insp-empty" class="empty">Select a row.</div>
+    <div id="insp" hidden>
+      <div class="insp-hd">
+        <div class="insp-event"></div>
+        <div class="insp-sel"></div>
+        <div class="insp-dir"></div>
+      </div>
+
+      <div class="metrics">
+        <div class="metric"><label>NET EDGE</label><b class="net"></b></div>
+        <div class="metric"><label>GROSS</label><b class="gross"></b></div>
+        <div class="metric"><label>BUFFERED</label><b class="buffered"></b></div>
+        <div class="metric"><label>QUALITY</label><b class="qual"></b></div>
+      </div>
+
+      <div class="sub-hd">EDGE HISTORY</div>
+      <svg id="spark" viewBox="0 0 320 54" preserveAspectRatio="none"></svg>
+      <div class="lifetime">
+        <span>peak <b class="peak"></b></span>
+        <span>avg <b class="avg"></b></span>
+        <span>low <b class="low"></b></span>
+        <span>moves <b class="changes"></b></span>
+      </div>
+
+      <div class="sub-hd">QUALITY BREAKDOWN</div>
+      <div id="quality-bars"></div>
+
+      <div class="sub-hd">STAKE SIMULATION <span class="muted" id="max-exec"></span></div>
+      <input id="stake" type="range" min="10" max="2000" step="10" value="200">
+      <div class="sim-grid" id="sim"></div>
+      <div class="hint">Stakes walk the ladder &mdash; larger stakes fill at worse
+        prices, so ROI falls as capital rises.</div>
+    </div>
+  </aside>
+
+  <section class="panel ladders">
+    <div class="panel-hd"><span>ORDER BOOK</span><span id="ladder-sel" class="muted"></span></div>
+    <div class="ladder-wrap">
+      <div class="venue" data-venue="Betfair"><div class="venue-hd">BETFAIR</div><div class="book"></div></div>
+      <div class="venue" data-venue="Matchbook"><div class="venue-hd">MATCHBOOK</div><div class="book"></div></div>
+    </div>
+  </section>
+</main>
+
+<footer class="statusbar">
+  <span id="foot-left"></span>
+  <span id="foot-right"></span>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
