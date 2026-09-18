@@ -12,7 +12,7 @@ edge that survives commission.
 [![Pyodide](https://img.shields.io/badge/Web-Pyodide%20%2F%20WebAssembly-8993be?logo=python&logoColor=white)](https://pyodide.org/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-### [▶ Try the live terminal](https://ziyanrq.github.io/MarketSync/)
+### [▶ Try the live terminal](https://ziyanrq.github.io/MarketSync-Prediction-Market-Screener-and-Autonomous-Bot/)
 
 <sub>Runs the project's real Python detection engine in your browser via
 WebAssembly. No install, no clone.</sub>
