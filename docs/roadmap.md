@@ -89,7 +89,6 @@ the provider's own `mode`, so there is never doubt about what is on screen.
 | No rate limiting or backoff | both poll loops | A fixed `time.sleep(interval)` with no awareness of quota; an HTTP 429 is unhandled |
 | Best-price only, depth ignored | `cross_exchange.py` | Covered by *Next* item 2 |
 | `MATCHBOOK_MFA_CODE` unused | `.env` | Present but read by nothing — finish the MFA path or drop the key |
-| `max_executable` is quantised to £250 | `app/utils/calculations.py` | Scans in steps of ceiling/200, so thin books report £0 and every answer rounds to £250. Pinned by `test_max_executable_is_coarse_on_thin_books` |
 | Matching is O(events × events) | `cross_exchange.py` | Fine at current scale; will not stay fine |
 | Commission rates are approximations | `COMMISSION` dicts | Both venues have tiered/market-dependent rates; these are deliberate guards, not settlement figures |
 | `RiskEngine._passes_profile` copied into `web/webapp.py` | `app/services/`, `web/` | Six lines duplicated because the original lives in a `QObject`. Fix: move the predicate onto `RiskProfile` |

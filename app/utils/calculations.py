@@ -125,22 +125,59 @@ def simulate(back_levels: List[PriceLevel], lay_levels: List[PriceLevel], capita
                      gross, commission, net_profit, roi, profit_win, profit_lose, executable)
 
 
-def max_executable(back_levels: List[PriceLevel], lay_levels: List[PriceLevel],
-                   c_back: float, c_lay: float, ceiling: float = 50000.0) -> float:
-    """Largest capital that still yields a non-negative guaranteed net profit.
+def _viable(back_levels: List[PriceLevel], lay_levels: List[PriceLevel], capital: float,
+            c_back: float, c_lay: float) -> bool:
+    """Can `capital` actually be filled at a guaranteed profit?"""
+    result = simulate(back_levels, lay_levels, capital, c_back, c_lay)
+    return result.executable and result.net_profit > 0
 
-    Coarse scan up the capital axis until the depth-eroded edge turns negative.
+
+def depth_ceiling(back_levels: List[PriceLevel], lay_levels: List[PriceLevel]) -> float:
+    """Capital beyond which the two books physically cannot fill.
+
+    Capital is back stake + lay liability, so the hard cap is all the back size
+    on offer plus the liability the whole lay ladder could cover.
     """
-    step = max(ceiling / 200.0, 1.0)
-    best = 0.0
-    capital = step
-    while capital <= ceiling:
-        result = simulate(back_levels, lay_levels, capital, c_back, c_lay)
-        if result.net_profit <= 0 or not result.executable:
-            break
-        best = capital
-        capital += step
-    return best
+    return (sum(level.size for level in back_levels)
+            + sum(level.size * (level.odds - 1) for level in lay_levels))
+
+
+def max_executable(back_levels: List[PriceLevel], lay_levels: List[PriceLevel],
+                   c_back: float, c_lay: float, ceiling: float = 50000.0,
+                   tolerance: float = 1.0) -> float:
+    """Largest capital that still yields a guaranteed net profit, to +/- tolerance.
+
+    Bisects rather than scanning. Viability is monotonic - a smaller stake fills
+    at prices at least as good, so if some capital is profitable then every
+    smaller one is too - which is exactly the property bisection needs.
+
+    The search is bounded by the depth actually on offer, not by `ceiling`, so a
+    thin book resolves to a real figure instead of being rounded away. (The
+    previous version stepped in ceiling/200 increments, which quantised every
+    answer to £250 and reported £0 for any book too thin to absorb one step.)
+    """
+    if not back_levels or not lay_levels:
+        return 0.0
+
+    hi = min(ceiling, depth_ceiling(back_levels, lay_levels))
+    if hi <= 0:
+        return 0.0
+
+    # If the smallest stake worth naming is already unprofitable, there is no edge.
+    floor = min(tolerance, hi)
+    if not _viable(back_levels, lay_levels, floor, c_back, c_lay):
+        return 0.0
+    if _viable(back_levels, lay_levels, hi, c_back, c_lay):
+        return hi  # the whole book is executable
+
+    lo = floor
+    while hi - lo > tolerance:
+        mid = (lo + hi) / 2
+        if _viable(back_levels, lay_levels, mid, c_back, c_lay):
+            lo = mid
+        else:
+            hi = mid
+    return round(lo, 2)
 
 
 def profit_curve(back_levels: List[PriceLevel], lay_levels: List[PriceLevel],

@@ -115,31 +115,50 @@ def test_roi_falls_as_capital_rises():
     assert large.net_roi < small.net_roi
 
 
-def test_max_executable_is_still_profitable_and_beyond_it_is_not():
-    # Depth well above the scan granularity (see the test below), so the
-    # ceiling is resolved rather than rounded away.
-    back, lay = book(3.50, 3.40, size=800.0)
-    ceiling = calc.max_executable(back, lay, C_BACK, C_LAY)
-    assert ceiling > 0
-    assert calc.simulate(back, lay, ceiling, C_BACK, C_LAY).net_profit > 0
-    beyond = calc.simulate(back, lay, ceiling * 4, C_BACK, C_LAY)
-    assert beyond.net_profit <= 0 or not beyond.executable
+def test_max_executable_is_profitable_and_beyond_it_is_not():
+    """The boundary it reports must be the real one, from both sides."""
+    for size in (60.0, 500.0, 5000.0):        # thin, normal and deep books
+        back, lay = book(3.50, 3.40, size=size)
+        ceiling = calc.max_executable(back, lay, C_BACK, C_LAY)
+        assert ceiling > 0, f"no ceiling found at rung size {size}"
+        assert calc.simulate(back, lay, ceiling, C_BACK, C_LAY).net_profit > 0
+        beyond = calc.simulate(back, lay, ceiling * 1.5, C_BACK, C_LAY)
+        assert beyond.net_profit <= 0 or not beyond.executable
 
 
-def test_max_executable_is_coarse_on_thin_books():
-    """KNOWN LIMITATION, pinned so a future fix is a deliberate choice.
+def test_max_executable_resolves_thin_books():
+    """Regression: a book thinner than the old scan step used to report zero.
 
-    max_executable scans upward in steps of ceiling/200 (£250 at the default
-    £50k ceiling), so its answer is quantised to £250 and any book too thin to
-    absorb one step reports £0 - even when a smaller stake would be profitable.
+    max_executable stepped in ceiling/200 increments - £250 at the default £50k
+    ceiling - so every answer was quantised to £250 and a book too thin to
+    absorb one step reported £0 despite a smaller stake being profitable.
     """
-    thin_back, thin_lay = book(3.50, 3.40, size=60.0)      # £240 of depth a side
-    assert calc.max_executable(thin_back, thin_lay, C_BACK, C_LAY) == 0.0
-    # ...yet £150 into that same book is genuinely profitable.
-    assert calc.simulate(thin_back, thin_lay, 150.0, C_BACK, C_LAY).net_profit > 0
+    back, lay = book(3.50, 3.40, size=60.0)   # only £240 of back depth
+    ceiling = calc.max_executable(back, lay, C_BACK, C_LAY)
+    assert 0 < ceiling < 250, f"expected a sub-£250 figure, got {ceiling}"
+    assert calc.simulate(back, lay, ceiling, C_BACK, C_LAY).net_profit > 0
 
-    # A lower ceiling shrinks the step and resolves it.
-    assert calc.max_executable(thin_back, thin_lay, C_BACK, C_LAY, ceiling=400.0) > 0
+
+def test_max_executable_is_precise_not_quantised():
+    """The answer should track the book, not snap to a fixed grid."""
+    ceilings = {calc.max_executable(*book(3.50, 3.40, size=s), C_BACK, C_LAY)
+                for s in (400.0, 450.0, 500.0)}
+    assert len(ceilings) == 3, f"different books gave identical ceilings: {ceilings}"
+    assert not all(c % 250 == 0 for c in ceilings), "still landing on £250 boundaries"
+
+
+def test_max_executable_is_bounded_by_real_depth():
+    """It can never exceed what the two ladders could physically absorb."""
+    back, lay = book(3.50, 3.40, size=500.0)
+    assert (calc.max_executable(back, lay, C_BACK, C_LAY)
+            <= calc.depth_ceiling(back, lay))
+
+
+def test_max_executable_is_zero_without_an_edge():
+    """Backing below the lay price is never executable at a profit, at any size."""
+    back, lay = book(3.40, 3.50, size=500.0)
+    assert calc.max_executable(back, lay, C_BACK, C_LAY) == 0.0
+    assert calc.max_executable([], [], C_BACK, C_LAY) == 0.0
 
 
 def test_empty_book_is_handled():
